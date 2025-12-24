@@ -1,0 +1,6 @@
+---
+homepage: https://dumbdata.co/
+documentation: https://github.com/Jude-Nwachukwu/gtm-user-property-data-manager
+versions:
+  - sha: ea9200ea2b3feccaa32256e1593b6b4606cf642f
+    changeNotes: Initial release.
