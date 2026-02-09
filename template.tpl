@@ -102,6 +102,26 @@ ___TEMPLATE_PARAMETERS___
               {
                 "value": "upmRGNI",
                 "displayValue": "Region"
+              },
+              {
+                "value": "upmCIT",
+                "displayValue": "City"
+              },
+              {
+                "value": "upmZIPOS",
+                "displayValue": "Postal Code"
+              },
+              {
+                "value": "upmADRS",
+                "displayValue": "Address"
+              },
+              {
+                "value": "upmGENDA",
+                "displayValue": "Gender"
+              },
+              {
+                "value": "upmFULNM",
+                "displayValue": "Full Name"
               }
             ]
           },
@@ -561,6 +581,7 @@ ___TEMPLATE_PARAMETERS___
 ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
 
 // User Property and Data Manager - Code Tab
+
 const setCookie = require('setCookie');
 const getCookieValues = require('getCookieValues');
 const makeString = require('makeString');
@@ -571,7 +592,7 @@ const JSONAPI = require('JSON');
 const sha256 = require('sha256');
 const localStorageAPI = require('localStorage');
 const Math = require('Math');
-const createQueue = require('createQueue'); // used for dataLayer push
+const createQueue = require('createQueue');
 
 // ----------------------------------------
 // Helpers
@@ -581,17 +602,18 @@ var isValidValue = function (val) {
   var t = getType(val);
   if (t === 'undefined' || t === 'null') return false;
   if (t === 'string' && makeString(val).trim() === '') return false;
+  if (makeString(val) === 'undefined' || makeString(val) === 'null') return false;
   return true;
 };
 
-// JSON.parse in GTM sandbox returns undefined on malformed JSON (safe)
+// Safe JSON.parse
 var safeParseJSON = function (maybeString) {
   if (!isValidValue(maybeString)) return null;
   var parsed = JSONAPI.parse(makeString(maybeString));
   return parsed === undefined ? null : parsed;
 };
 
-// compute cookie max-age
+// Compute cookie max-age
 var computeMaxAge = function (unit, lifespan) {
   var v = makeNumber(lifespan) || 0;
   var mult = 1;
@@ -602,27 +624,32 @@ var computeMaxAge = function (unit, lifespan) {
   return Math.floor(v * mult);
 };
 
-// normalize manual keys
+// Manual field mapping (NEW FIELDS INCLUDED)
 var manualKeyToStorageKey = function (key) {
   var map = {
     upmDFN: 'firstName',
     upmDLN: 'lastName',
     upmDE:  'email',
     upmDPN: 'phone',
-    upmCONT: 'country',
-    upmRGNI: 'region',
-    upmDDOB: 'dateOfBirth',
-    upmDUID: 'userId'
+    upmDDOB:'dateOfBirth',
+    upmDUID:'userId',
+    upmCONT:'country',
+    upmRGNI:'region',
+    upmCIT: 'city',
+    upmZIPOS:'postalCode',
+    upmADRS:'address',
+    upmGENDA:'gender',
+    upmFULNM:'fullName'
   };
   return map[key] || makeString(key);
 };
 
-// normalize object key names (no spaces allowed)
+// Normalize object output keys
 var normalizeKeyName = function (str) {
   return makeString(str).split(' ').join('_');
 };
 
-// write cookie + LS (does NOT call gtmOnSuccess/gmtOnFailure itself)
+// Write cookie + localStorage
 var writeStorages = function (obj, cookieName, cookieOptions, useLS, lsKey) {
   var payload = JSONAPI.stringify(obj) || '{}';
   setCookie(cookieName, payload, cookieOptions);
@@ -632,10 +659,9 @@ var writeStorages = function (obj, cookieName, cookieOptions, useLS, lsKey) {
   }
 };
 
-// async SHA256 helper (wrapper previously inline in loops)
-var computeShaAsync = function (input, encodingArg, onDone) {
-  var enc = makeString(encodingArg || 'base64');
-  var opts = enc === 'hex' ? { outputEncoding: 'hex' } : undefined;
+// Async SHA256
+var computeShaAsync = function (input, encoding, onDone) {
+  var opts = encoding === 'hex' ? { outputEncoding: 'hex' } : undefined;
 
   sha256(makeString(input), function (digest) {
     onDone(digest);
@@ -644,182 +670,163 @@ var computeShaAsync = function (input, encodingArg, onDone) {
   }, opts);
 };
 
-// scheduler helper declared outside loops to avoid inner-loop function creation
-var scheduleHash = function (valueToHash, outputKey, encoding, resultObjRef, onFinish, onErrorFlag) {
-  // incrementing / decrementing handled by caller (pending)
-  computeShaAsync(valueToHash, encoding, function (digest) {
+// Hash scheduler
+var scheduleHash = function (val, key, encoding, obj, finish, errorFlag) {
+  computeShaAsync(val, encoding, function (digest) {
     if (isValidValue(digest)) {
-      resultObjRef[outputKey + '_sha'] = digest;
+      obj[key + '_sha'] = digest;
     } else {
-      // mark that a hash operation failed
-      onErrorFlag.hasError = true;
+      errorFlag.hasError = true;
     }
-    onFinish();
+    finish();
   });
 };
 
-// DataLayer push helper — uses createQueue API
+// DataLayer push
 var pushToDataLayer = function (eventName, userObj) {
-  // createQueue returns a function that pushes objects onto the named array (eg: 'dataLayer')
-  var dataLayerPush = createQueue('dataLayer');
-  var payload = {
+  var push = createQueue('dataLayer');
+  push({
+    event: eventName,
     datalayer_source: 'dd gtm custom tag template',
-    user_data: userObj,
-    event: eventName
-  };
-  dataLayerPush(payload);
+    user_data: userObj
+  });
 };
 
 // ----------------------------------------
 // MAIN EXECUTION
 // ----------------------------------------
+
 (function main() {
 
   var method = makeString(data.upmPropertyStorageMethod || 'upmMethodManualOnly');
 
-  // --- cookie name ---
-  var cookieName = (data.upmUseCustomCookieName === true && isValidValue(data.upmCustomCookieName))
+  // Cookie config
+  var cookieName = (data.upmUseCustomCookieName && isValidValue(data.upmCustomCookieName))
     ? makeString(data.upmCustomCookieName)
     : 'dd_cookie_gtm_user_data';
 
-  // --- domain/path ---
-  var cookieDomain = (data.setCookieDomain === true && isValidValue(data.inputCookieDomain))
+  var cookieDomain = (data.setCookieDomain && isValidValue(data.inputCookieDomain))
     ? makeString(data.inputCookieDomain)
     : 'auto';
 
-  var cookiePath = (data.setCookiePath === true && isValidValue(data.inputCookiePath))
+  var cookiePath = (data.setCookiePath && isValidValue(data.inputCookiePath))
     ? makeString(data.inputCookiePath)
     : '/';
-
-  var maxAge = computeMaxAge(makeString(data.ddCookieDuration), data.ddCookieLifeSpan);
 
   var cookieOptions = {
     domain: cookieDomain,
     path: cookiePath,
-    'max-age': maxAge
+    'max-age': computeMaxAge(data.ddCookieDuration, data.ddCookieLifeSpan)
   };
 
-  // --- localStorage ---
+  // LocalStorage config
   var useLS = data.upmLocalStorage === true;
-  var lsKey = (useLS && data.upmLocalStorageCustom === true && isValidValue(data.upmLocalStorageCustomName))
+  var lsKey = (useLS && data.upmLocalStorageCustom && isValidValue(data.upmLocalStorageCustomName))
     ? makeString(data.upmLocalStorageCustomName)
     : 'dd_cookie_ls_user_data';
 
   // ----------------------------------------
-  // Load existing cookie to preserve attributes (and merge LS when available)
+  // Load existing values (Option B)
   // ----------------------------------------
-  var existingCookieArr = getCookieValues(cookieName) || [];
-  var existingCookieRaw = existingCookieArr.length > 0 ? existingCookieArr[0] : null;
-  var cookieObj = safeParseJSON(existingCookieRaw);
-
-  var lsObj = null;
-  if (useLS && localStorageAPI) {
-    var lsRaw = localStorageAPI.getItem(makeString(lsKey));
-    lsObj = safeParseJSON(lsRaw);
-  }
 
   var resultObj = {};
 
-  // If cookie exists -> load cookie keys first, then merge LS for missing keys
-  if (cookieObj) {
-    var ckKeys = ObjectAPI.keys(cookieObj);
-    for (var ci = 0; ci < ckKeys.length; ci++) {
-      var ck = ckKeys[ci];
-      resultObj[ck] = cookieObj[ck];
-    }
+  var cookieArr = getCookieValues(cookieName) || [];
+  var cookieObj = safeParseJSON(cookieArr[0]);
 
-    if (lsObj) {
-      var lsKeys = ObjectAPI.keys(lsObj);
-      for (var li = 0; li < lsKeys.length; li++) {
-        var lkey = lsKeys[li];
-        if (!isValidValue(resultObj[lkey]) && isValidValue(lsObj[lkey])) {
-          resultObj[lkey] = lsObj[lkey];
-        }
+  var lsObj = null;
+  if (useLS && localStorageAPI) {
+    lsObj = safeParseJSON(localStorageAPI.getItem(makeString(lsKey)));
+  }
+
+  // Cookie first
+  if (cookieObj) {
+    var ck = ObjectAPI.keys(cookieObj);
+    for (var i = 0; i < ck.length; i++) {
+      resultObj[ck[i]] = cookieObj[ck[i]];
+    }
+  }
+
+  // LS fills gaps only
+  if (lsObj) {
+    var lk = ObjectAPI.keys(lsObj);
+    for (var j = 0; j < lk.length; j++) {
+      var k = lk[j];
+      if (!isValidValue(resultObj[k]) && isValidValue(lsObj[k])) {
+        resultObj[k] = lsObj[k];
       }
     }
   }
-  // Cookie missing -> fallback to LS
-  else if (!cookieObj && lsObj) {
-    var lsKeys2 = ObjectAPI.keys(lsObj);
-    for (var li2 = 0; li2 < lsKeys2.length; li2++) {
-      var lk2 = lsKeys2[li2];
-      resultObj[lk2] = lsObj[lk2];
-    }
-  }
-  // Neither -> start empty
-  else {
-    resultObj = {};
-  }
 
-  // Track pending hashes and errors
+  // ----------------------------------------
+  // Async control
+  // ----------------------------------------
+
   var pending = 0;
-  var hadHashError = { hasError: false }; // object so references in closures update correctly
+  var hashError = { hasError: false };
 
   var finish = function () {
-    pending = pending - 1;
-    if (pending <= 0) {
-      // write storages
-      writeStorages(resultObj, cookieName, cookieOptions, useLS, lsKey);
+    pending--;
+    if (pending <= 0) finalize();
+  };
 
-      // push to dataLayer if enabled
-      if (data.ddPushToDataLayer === true) {
-        var eventName = 'gtm_dd_updm_user_data';
-        if (data.ddPushToDataLayerCustom === true && isValidValue(data.customDataLayerEventName)) {
-          eventName = makeString(data.customDataLayerEventName);
-        }
-        pushToDataLayer(eventName, resultObj);
-      }
+  var finalize = function () {
+    writeStorages(resultObj, cookieName, cookieOptions, useLS, lsKey);
 
-      // callbacks
-      if (hadHashError.hasError) {
-        if (data && typeof data.gtmOnFailure === 'function') data.gtmOnFailure();
-      } else {
-        if (data && typeof data.gtmOnSuccess === 'function') data.gtmOnSuccess();
+    // DataLayer support
+    if (data.ddPushToDataLayer === true) {
+      var ev = 'gtm_dd_updm_user_data';
+      if (data.ddPushToDataLayerCustom && isValidValue(data.customDataLayerEventName)) {
+        ev = makeString(data.customDataLayerEventName);
       }
+      pushToDataLayer(ev, resultObj);
+    }
+
+    // GTM callbacks
+    if (hashError.hasError) {
+      if (data && typeof data.gtmOnFailure === 'function') data.gtmOnFailure();
+    } else {
+      if (data && typeof data.gtmOnSuccess === 'function') data.gtmOnSuccess();
     }
   };
 
   // ----------------------------------------
   // OBJECT INPUT HANDLING
   // ----------------------------------------
+
   if (method === 'upmMethodObjOnly' || method === 'upmMethodObjandManual') {
 
-    var objVar = data.upmDataObjVariable;
-    var mapTable = data.upmDataObjMapping || [];
+    var obj = data.upmDataObjVariable;
+    var map = data.upmDataObjMapping || [];
+    var hashEnabled = data.upmDataObjHashing === true;
+    var enc = data.upmDataObjHashingMethod === 'upmDataObjHashingHex' ? 'hex' : 'base64';
 
-    var objHashEnabled = data.upmDataObjHashing === true;
-    var objHashMethod = makeString(data.upmDataObjHashingMethod || 'upmDataObjHashingBase64');
-    var objHashEncoding = (objHashMethod === 'upmDataObjHashingHex') ? 'hex' : 'base64';
-
-    // attributes to hash (set)
-    var hashRows = data.upmDataObjHashingAttrKey || [];
-    var hashSet = {};
-    for (var h = 0; h < hashRows.length; h++) {
-      var hv = makeString(hashRows[h].upmDataObjHashingKeyInput || '');
-      if (isValidValue(hv)) hashSet[hv] = true;
+    var hashKeys = {};
+    var rows = data.upmDataObjHashingAttrKey || [];
+    for (var h = 0; h < rows.length; h++) {
+      var hv = makeString(rows[h].upmDataObjHashingKeyInput || '');
+      if (isValidValue(hv)) hashKeys[hv] = true;
     }
 
-    if (getType(objVar) === 'object') {
+    if (getType(obj) === 'object') {
+      for (var m = 0; m < map.length; m++) {
+        var row = map[m];
+        var outKey = normalizeKeyName(row.upmDataObjKeyName);
+        var inKey = makeString(row.upmDataObjValue);
+        var val = obj[inKey];
 
-      for (var i = 0; i < mapTable.length; i++) {
-        var mapRow = mapTable[i] || {};
+        if (!isValidValue(val)) continue;
 
-        var rawOutKey = mapRow.upmDataObjKeyName;
-        var attrKey = mapRow.upmDataObjValue;
+        var shouldUpdate =
+          !isValidValue(resultObj[outKey]) || resultObj[outKey] !== val;
 
-        if (!isValidValue(rawOutKey) || !isValidValue(attrKey)) continue;
+        if (shouldUpdate) {
+          resultObj[outKey] = val;
+        }
 
-        var outKey = normalizeKeyName(rawOutKey);
-        var attrVal = objVar[makeString(attrKey)];
-
-        if (isValidValue(attrVal)) {
-          resultObj[outKey] = attrVal;
-
-          if (objHashEnabled && hashSet[makeString(attrKey)]) {
-            pending = pending + 1;
-            // schedule hash using helper outside loop
-            scheduleHash(attrVal, outKey, objHashEncoding, resultObj, finish, hadHashError);
-          }
+        if (hashEnabled && hashKeys[inKey] && shouldUpdate) {
+          pending++;
+          scheduleHash(val, outKey, enc, resultObj, finish, hashError);
         }
       }
     }
@@ -828,55 +835,46 @@ var pushToDataLayer = function (eventName, userObj) {
   // ----------------------------------------
   // MANUAL INPUT HANDLING
   // ----------------------------------------
+
   if (method === 'upmMethodManualOnly' || method === 'upmMethodObjandManual') {
 
     var table = data.upmGroupTable || [];
-    var manualHashEnabled = data.upmHashing === true;
-
-    var manualHashMethod = makeString(data.upmHashingMethod || 'upmHashingBase');
-    var manualHashEncoding = (manualHashMethod === 'upmHashingHex') ? 'hex' : 'base64';
+    var manualHash = data.upmHashing === true;
+    var encM = data.upmHashingMethod === 'upmHashingHex' ? 'hex' : 'base64';
 
     for (var r = 0; r < table.length; r++) {
-      var tableRow = table[r];
+      var rowM = table[r];
+      var key = manualKeyToStorageKey(rowM.upmDUserData);
+      var valM = rowM.upmDvar;
 
-      var selAttr = makeString(tableRow.upmDUserData || '');
-      var attrValue = tableRow.upmDvar;
+      if (!isValidValue(valM)) continue;
 
-      if (!isValidValue(selAttr)) continue;
+      var shouldUpdateManual =
+        !isValidValue(resultObj[key]) || resultObj[key] !== valM;
 
-      var keyName = manualKeyToStorageKey(selAttr);
+      if (shouldUpdateManual) {
+        resultObj[key] = valM;
+      }
 
-      if (isValidValue(attrValue)) {
-        resultObj[keyName] = attrValue;
-
-        if (manualHashEnabled &&
-          (selAttr === 'upmDFN' || selAttr === 'upmDLN' || selAttr === 'upmDE')) {
-
-          pending = pending + 1;
-          scheduleHash(attrValue, keyName, manualHashEncoding, resultObj, finish, hadHashError);
-        }
+      if (
+        manualHash &&
+        shouldUpdateManual &&
+        (rowM.upmDUserData === 'upmDFN' ||
+         rowM.upmDUserData === 'upmDLN' ||
+         rowM.upmDUserData === 'upmDE')
+      ) {
+        pending++;
+        scheduleHash(valM, key, encM, resultObj, finish, hashError);
       }
     }
   }
 
   // ----------------------------------------
-  // If no hashing pending, write immediately and call callbacks
+  // No async work
   // ----------------------------------------
+
   if (pending === 0) {
-    // write storages
-    writeStorages(resultObj, cookieName, cookieOptions, useLS, lsKey);
-
-    // push to dataLayer if enabled
-    if (data.ddPushToDataLayer === true) {
-      var ev = 'gtm_dd_updm_user_data';
-      if (data.ddPushToDataLayerCustom === true && isValidValue(data.customDataLayerEventName)) {
-        ev = makeString(data.customDataLayerEventName);
-      }
-      pushToDataLayer(ev, resultObj);
-    }
-
-    // call success (no hash errors because none were pending)
-    if (data && typeof data.gtmOnSuccess === 'function') data.gtmOnSuccess();
+    finalize();
   }
 
 })();
