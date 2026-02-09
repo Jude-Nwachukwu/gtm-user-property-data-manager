@@ -1,197 +1,244 @@
+
 # 📘 **User Property and Data Manager – GTM Custom Tag Template**
 
 ## Overview
-The **User Property and Data Manager** is a Google Tag Manager custom tag template designed to collect, normalize, hash, merge, store, and optionally push user data into the dataLayer.  
-It supports **manual user inputs**, **user property objects**, **secure hashing**, **cookie and localStorage persistence**, and **merging logic** that preserves previously stored attributes.
+The **User Property and Data Manager** is a Google Tag Manager custom tag template designed to collect, normalize, hash, merge, store, and optionally push user data into the dataLayer.
 
-This template is built for advanced user-data handling while maintaining compliance, flexibility, and durable user-data persistence across sessions.
+It supports **manual user inputs**, **user property object mapping**, **secure hashing**, **cookie and localStorage persistence**, and a robust **merge-and-restore logic** that guarantees durable user data across sessions.
+
+This template is built for advanced, production-grade user data handling while maintaining flexibility, correctness, and compliance-friendly behavior.
 
 ---
 
 # 🚀 Features
 
-### **✔ Collect User Data From Multiple Sources**
-- Manual input fields (first name, last name, email, phone, country, region, DOB, user ID)
+### ✔ Collect User Data From Multiple Sources
+- Manual user attribute inputs
 - User property object mapping (dynamic key/value extraction)
-- Combined mode: manual + object input
+- Hybrid mode: manual + object input together
 
-### **✔ Secure Hashing Support**
-- SHA-256 hashing for selected manual fields (first name, last name, email)
-- SHA-256 hashing for selected object fields
-- Choose **Hexadecimal** or **Base64** output format
+### ✔ Secure Hashing Support
+- SHA-256 hashing
+- Manual hashing for selected attributes
+- Object hashing for selected object keys
+- Output formats:
+  - Hexadecimal
+  - Base64
+- Hashes only regenerate when values change
 
-### **✔ Persistent Storage Layer**
-- Stores user data in cookie  
-- Optionally stores in localStorage  
-- Custom cookie names, domain, path  
-- Custom localStorage keys supported
+### ✔ Persistent Storage Layer
+- Stores data in cookies
+- Optional localStorage persistence
+- Custom cookie name, domain, and path
+- Custom localStorage key support
+- Cookie expiration always refreshed on update
 
-### **✔ Advanced Merging Logic**
-- Cookie = **primary**, localStorage = **fallback**
-- If cookie exists → merge cookie + LS (cookie overrides conflicts)  
-- If cookie missing → restore from LS  
-- Empty, undefined, or null values never overwrite existing stored values
+### ✔ Advanced Merge & Restore Logic
+- Cookie is **primary**
+- localStorage is **secondary**
+- If cookie exists → merge cookie + LS (cookie wins conflicts)
+- If cookie is missing → restore fully from LS
+- Empty, null, or undefined values **never overwrite** existing data
 
-### **✔ Optional DataLayer Push**
-Pushes:
-- `event`: `"gtm_dd_updm_user_data"` (default) or custom name
-- `datalayer_source`: `"dd gtm custom tag template"`
-- Full user property data object
+### ✔ Optional DataLayer Push
+Pushes a clean user object into the dataLayer with:
+- Default or custom event name
+- Stable data structure
+- Clear source attribution
 
-### **✔ Fully Async-Safe**
-- Only calls `data.gtmOnSuccess()` when hashing + writing completes  
-- Calls `data.gtmOnFailure()` on real hashing failures  
-- Never fires callbacks prematurely
+### ✔ Async-Safe Execution
+- Waits for all hashing to complete
+- Calls `data.gtmOnSuccess()` only after completion
+- Calls `data.gtmOnFailure()` on real hashing failures
+- No premature callbacks
 
-### **✔ Developer Friendly**
-- Clean mapping flow  
-- Predictable outputs  
-- Manual + Object harmonized  
-- Apache 2 licensed
+### ✔ Developer Friendly
+- Predictable merge rules
+- No silent overwrites
+- Clear separation of concerns
+- Apache 2.0 licensed
 
 ---
 
 # 📥 Installation (GTM)
 
-1. Go to **Google Tag Manager → Templates → Tag Templates → New**  
-2. Click **Import**  
-3. Upload the `.tpl` file for this template  
-4. Save the template  
-5. Create a new tag using **User Property and Data Manager**  
-6. Configure using the instructions below
+1. Open **Google Tag Manager**
+2. Go to **Templates → Tag Templates**
+3. Click **New → Import**
+4. Upload the template `.tpl` file
+5. Save the template
+6. Create a new tag using **User Property and Data Manager**
+7. Configure the tag as described below
 
 ---
 
-# ⚙️ Configuration Guide  
+# ⚙️ Configuration Guide
 
-All references below use **Display Names** exactly as they appear in the GTM Template UI.
+All configuration references below use **Display Names exactly as shown in the GTM UI**.
 
 ---
 
-## **1. Select Data Source Method**
-Field: **“Select the User Property Data Source Method”**
+## 1️⃣ Select Data Source Method
+**Field:** *Select the User Property Data Source Method*
 
 Options:
-- Both User Property Object and Manual Input  
-- Manual Input Only  
-- User Property Object Only  
+- **Both User Property Object and Manual Input**
+- **Manual Input Only**
+- **User Property Object Only**
 
-This determines which configuration groups will become visible.
+This controls which configuration sections are displayed.
 
 ---
 
-## **2. Configure Manual User Data**
-Group: **“Configure Your User Data/Property Fields”**
+## 2️⃣ Configure Manual User Data
+**Group:** *Configure Your User Data/Property Fields*
 
-### User Property Table
+### Manual User Property Table
+
 Columns:
-- **User Data** → Choose field type  
-- **Enter Value** → Macro or static input (e.g., `{{dlv - userFirstName}}`)
+- **User Data** → Select a predefined user attribute
+- **Enter Value** → GTM variable or static value
 
-### Optional: Hashing  
-Toggle: **“Enable hashing for first name, last name, and email address if collected.”**
+### ✅ Supported Manual User Attributes
 
-Then choose:  
-- **Hexadecimal**  
-- **BASE64**
+| Display Name      | Stored Key     |
+|------------------|---------------|
+| First Name       | `firstName`   |
+| Last Name        | `lastName`    |
+| Email Address    | `email`       |
+| Phone Number     | `phone`       |
+| Date of Birth    | `dateOfBirth` |
+| User ID          | `userId`      |
+| Country          | `country`     |
+| Region / State   | `region`      |
+| City             | `city`        |
+| Postal Code      | `postalCode`  |
+| Address          | `address`     |
+| Gender           | `gender`      |
+| Full Name        | `fullName`    |
+
+> All values are validated before storage. Empty or invalid values are ignored.
 
 ---
 
-## **3. Configure User Object Mapping**
-Group: **“Configure the User Object”** *(Shown only in Object or Hybrid mode)*
+### 🔐 Manual Hashing
+**Toggle:** *Enable hashing for first name, last name, and email address if collected*
+
+Hashing applies to:
+- First Name
+- Last Name
+- Email Address
+
+Hash formats:
+- Hexadecimal
+- Base64
+
+Hashes are only regenerated when values change.
+
+---
+
+## 3️⃣ Configure User Property Object
+**Group:** *Configure the User Object*  
+*(Visible in Object-only or Hybrid mode)*
 
 ### Fields:
 - **User Property Object Variable**  
-  Provide a GTM variable returning an object.
+  A GTM variable returning an object.
 
-### Mapping Table:
-- **Key Name** → The storage key (spaces become `_`)  
-- **Corresponding Attribute Key** → The object property to read
+### Mapping Table
 
-### Object Hashing  
-- Enable: **“Enable hashing for selected user property attributes…”**  
-- Choose **Hexadecimal** or **Base64**  
-- Add one or more keys inside **“Enter Hashing User Attribute Key”**
+| Column | Description |
+|------|-------------|
+| Key Name | Output storage key (spaces auto-converted to `_`) |
+| Corresponding Attribute Key | Object property to read |
+
+### 🔐 Object Hashing
+- Enable hashing for selected object attributes
+- Choose Hex or Base64
+- Specify one or more attribute keys to hash
 
 ---
 
-## **4. Cookie Configuration**
-Group: **“Cookie Configuration”**
+## 4️⃣ Cookie Configuration
+**Group:** *Cookie Configuration*
 
-- **Use a Custom Cookie Name** (optional)  
-- **Cookie Duration**  
-- **Cookie Lifespan**  
-- **Advanced Configuration (Optional)**  
-  - Custom domain  
+Options:
+- Use a custom cookie name
+- Cookie duration unit
+- Cookie lifespan value
+- Advanced options:
+  - Custom domain
   - Custom path
 
-Default cookie name:  
+**Default cookie name:**  
 `dd_cookie_gtm_user_data`
 
 ---
 
-## **5. LocalStorage Configuration**
-Group: **“LocalStorage Config”**
+## 5️⃣ LocalStorage Configuration
+**Group:** *LocalStorage Config*
 
-- **Also store the data in Local Storage**  
-- **Use a custom localstorage key** (optional)
-- **Input LocalStorage Name**
+Options:
+- Also store the data in Local Storage
+- Use a custom localStorage key
 
-Default LS key:  
+**Default localStorage key:**  
 `dd_cookie_ls_user_data`
 
 ---
 
-## **6. DataLayer Configuration**
-Group: **“DataLayer Configuration”**
+## 6️⃣ DataLayer Configuration
+**Group:** *DataLayer Configuration*
 
 Options:
-- **Push user property data to the dataLayer**  
-- **Use a custom event name**  
-- **Custom Data Layer Event Name**
+- Push user property data to the dataLayer
+- Use a custom event name
 
-### Default dataLayer push:
+### Default dataLayer Push
 ```js
 {
   event: "gtm_dd_updm_user_data",
   datalayer_source: "dd gtm custom tag template",
-  user_properties: { ...stored properties... }
+  user_data: { ...merged user properties... }
 }
-```
+````
 
 ---
 
 # 📊 Example Setups & Outputs
 
-## **Example 1 — Manual + Object (Hybrid Mode)**
+## Example 1 — Hybrid Mode (Manual + Object)
 
-### Manual Inputs:
+### Manual Inputs
 
 | User Data  | Enter Value         |
 | ---------- | ------------------- |
 | First Name | {{dlv - firstName}} |
 | Email      | {{dlv - email}}     |
+| City       | {{dlv - city}}      |
 
 Hashing enabled → **Hexadecimal**
 
-### Object Input:
+---
 
-Variable: `{{dlv - userProfile}}`
+### Object Input
 
-Mapping:
+**Variable:** `{{dlv - userProfile}}`
+
+**Mapping Table:**
 
 | Key Name     | Corresponding Attribute Key |
 | ------------ | --------------------------- |
 | user_plan    | plan                        |
 | subscription | level                       |
 
-Object hashing enabled for:
+Hash enabled for:
 
 * `plan`
 
 ---
 
-### **Resulting Stored Cookie:**
+### Resulting Stored Cookie
 
 ```json
 {
@@ -199,43 +246,42 @@ Object hashing enabled for:
   "firstName_sha": "3249bfe7...",
   "email": "john@example.com",
   "email_sha": "7af02ce...",
+  "city": "Lagos",
   "user_plan": "premium",
   "user_plan_sha": "91f7ab3...",
   "subscription": "gold"
 }
 ```
 
-### **If Previous Cookie Exists**
+---
 
-* Missing keys are added
-* Existing keys remain
-* No empty or null values overwrite previous values
+### Merge Behavior
 
-### **If Cookie Missing, but LS Exists**
-
-* LS restores previously stored values
-* New fields are merged in
-* Cookie rewritten with refreshed expiration
+* Existing cookie values are preserved
+* Missing fields are filled from localStorage
+* localStorage restores cookie if cookie is deleted
+* No invalid values overwrite stored data
 
 ---
 
-# 🧠 Logic Summary
+# 🧠 Execution Logic Summary
 
-1. Load cookie → acts as **primary** data source
-2. Load localStorage → fills missing fields
-3. Merge manual inputs
-4. Merge object mappings
-5. Hash fields (if enabled), handle async
-6. Refresh cookie & update LS (if enabled)
-7. Push to dataLayer (if enabled)
-8. Call `data.gtmOnSuccess()`
-9. On hashing failure → `data.gtmOnFailure()`
+1. Load cookie (primary)
+2. Load localStorage (secondary)
+3. Merge cookie + LS
+4. Merge manual inputs
+5. Merge object mappings
+6. Hash updated fields (async-safe)
+7. Write cookie + localStorage
+8. Push to dataLayer (if enabled)
+9. Call `data.gtmOnSuccess()`
+10. On hashing error → `data.gtmOnFailure()`
 
 ---
 
 # 🔗 Useful Links
 
-### **DumbData Custom Template Collection:**
+### DumbData GTM Custom Templates
 
 [https://dumbdata.co/gtm-custom-templates/](https://dumbdata.co/gtm-custom-templates/)
 
@@ -245,3 +291,4 @@ Object hashing enabled for:
 
 **Apache License 2.0**
 Free for commercial and personal use.
+
