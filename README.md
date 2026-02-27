@@ -52,11 +52,6 @@ Pushes a clean user object into the dataLayer with:
 - Calls `data.gtmOnFailure()` on real hashing failures
 - No premature callbacks
 
-### ✔ Developer Friendly
-- Predictable merge rules
-- No silent overwrites
-- Clear separation of concerns
-- Apache 2.0 licensed
 
 ---
 
